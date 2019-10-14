@@ -23,16 +23,11 @@ import {
 } from '@react-native-community/cli-tools';
 import warnAboutManuallyLinkedLibs from '../../link/warnAboutManuallyLinkedLibs';
 
-// Verifies this is an Android project
-function checkAndroid(root: string) {
-  return fs.existsSync(path.join(root, 'android/gradlew'));
-}
+type AndroidConfig = NonNullable<Config['project']['android']>;
 
 export interface Flags {
   tasks?: Array<string>;
-  root: string;
   variant: string;
-  appFolder: string;
   appId: string;
   appIdSuffix: string;
   mainActivity: string;
@@ -47,7 +42,7 @@ export interface Flags {
  * Starts the app on a connected Android emulator or device.
  */
 async function runAndroid(_argv: Array<string>, config: Config, args: Flags) {
-  if (!checkAndroid(args.root)) {
+  if (!config.project.android) {
     logger.error(
       'Android project not found. Are you sure this is a React Native project?',
     );
@@ -73,7 +68,7 @@ async function runAndroid(_argv: Array<string>, config: Config, args: Flags) {
   }
 
   if (!args.packager) {
-    return buildAndRun(args);
+    return buildAndRun(args, config);
   }
 
   return isPackagerRunning(args.port).then(result => {
@@ -98,7 +93,7 @@ async function runAndroid(_argv: Array<string>, config: Config, args: Flags) {
         );
       }
     }
-    return buildAndRun(args);
+    return buildAndRun(args, config);
   });
 }
 
@@ -118,15 +113,24 @@ function getPackageNameWithSuffix(
 }
 
 // Builds the app and runs it on a connected emulator / device.
-function buildAndRun(args: Flags) {
-  process.chdir(path.join(args.root, 'android'));
+function buildAndRun(args: Flags, config: Config) {
+  const androidConfig = config.project.android;
+  if (!androidConfig) {
+    return;
+  }
+  process.chdir(
+    androidConfig.isFlat
+      ? androidConfig.sourceDir
+      : androidConfig.sourceDir
+          .split('/')
+          .slice(0, -1)
+          .join('/'),
+  );
   const cmd = process.platform.startsWith('win') ? 'gradlew.bat' : './gradlew';
 
-  // "app" is usually the default value for Android apps with only 1 app
-  const {appFolder} = args;
   // @ts-ignore
   const packageName = fs
-    .readFileSync(`${appFolder}/src/main/AndroidManifest.xml`, 'utf8')
+    .readFileSync(androidConfig.manifestPath, 'utf8')
     .match(/package="(.+?)"/)[1];
 
   const packageNameWithSuffix = getPackageNameWithSuffix(
@@ -138,6 +142,7 @@ function buildAndRun(args: Flags) {
   if (args.deviceId) {
     return runOnSpecificDevice(
       args,
+      config,
       cmd,
       packageNameWithSuffix,
       packageName,
@@ -146,6 +151,7 @@ function buildAndRun(args: Flags) {
   } else {
     return runOnAllDevices(
       args,
+      config,
       cmd,
       packageNameWithSuffix,
       packageName,
@@ -156,6 +162,7 @@ function buildAndRun(args: Flags) {
 
 function runOnSpecificDevice(
   args: Flags,
+  config: Config,
   gradlew: 'gradlew.bat' | './gradlew',
   packageNameWithSuffix: string,
   packageName: string,
@@ -168,6 +175,7 @@ function runOnSpecificDevice(
       buildApk(gradlew);
       installAndLaunchOnDevice(
         args,
+        config,
         deviceId,
         packageNameWithSuffix,
         packageName,
@@ -196,14 +204,23 @@ function buildApk(gradlew: string) {
   }
 }
 
-function tryInstallAppOnDevice(args: Flags, adbPath: string, device: string) {
+function tryInstallAppOnDevice(
+  args: Flags,
+  config: Config,
+  adbPath: string,
+  device: string,
+) {
+  const androidConfig = config.project.android;
   try {
-    // "app" is usually the default value for Android apps with only 1 app
-    const {appFolder} = args;
     const variant = args.variant.toLowerCase();
-    const buildDirectory = `${appFolder}/build/outputs/apk/${variant}`;
+    const buildDirectory = `${
+      (androidConfig as AndroidConfig).sourceDir
+    }/build/outputs/apk/${variant}`;
     const apkFile = getInstallApkName(
-      appFolder,
+      (androidConfig as AndroidConfig).sourceDir
+        .split('/')
+        .slice(0, -1)
+        .join('/'),
       adbPath,
       variant,
       device,
@@ -250,13 +267,14 @@ function getInstallApkName(
 
 function installAndLaunchOnDevice(
   args: Flags,
+  config: Config,
   selectedDevice: string,
   packageNameWithSuffix: string,
   packageName: string,
   adbPath: string,
 ) {
   tryRunAdbReverse(args.port, selectedDevice);
-  tryInstallAppOnDevice(args, adbPath, selectedDevice);
+  tryInstallAppOnDevice(args, config, adbPath, selectedDevice);
   tryLaunchAppOnDevice(
     selectedDevice,
     packageNameWithSuffix,
@@ -374,21 +392,9 @@ export default {
   func: runAndroid,
   options: [
     {
-      name: '--root [string]',
-      description:
-        'Override the root directory for the android build (which contains the android directory)',
-      default: '',
-    },
-    {
       name: '--variant [string]',
       description: "Specify your app's build variant",
       default: 'debug',
-    },
-    {
-      name: '--appFolder [string]',
-      description:
-        'Specify a different application folder name for the android source. If not, we assume is "app"',
-      default: 'app',
     },
     {
       name: '--appId [string]',

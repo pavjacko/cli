@@ -303,21 +303,11 @@ Builds your app and starts it on a connected Android emulator or device.
 
 #### Options
 
-#### `--root [string]`
-
-Override the root directory for the Android build (which contains the android directory)'.
-
 #### `--variant [string]`
 
 > default: 'debug'
 
 Specify your app's build variant.
-
-#### `--appFolder [string]`
-
-> default: 'app'
-
-Specify a different application folder name for the Android source. If not, we assume is "app".
 
 #### `--appId [string]`
 

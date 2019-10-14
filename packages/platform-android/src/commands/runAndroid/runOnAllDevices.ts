@@ -9,6 +9,7 @@
 import chalk from 'chalk';
 import {execFileSync} from 'child_process';
 import {logger, CLIError} from '@react-native-community/cli-tools';
+import {Config} from '@react-native-community/cli-types';
 import adb from './adb';
 import tryRunAdbReverse from './tryRunAdbReverse';
 import tryLaunchAppOnDevice from './tryLaunchAppOnDevice';
@@ -30,6 +31,7 @@ function toPascalCase(value: string) {
 
 async function runOnAllDevices(
   args: Flags,
+  config: Config,
   cmd: string,
   packageNameWithSuffix: string,
   packageName: string,
@@ -53,8 +55,15 @@ async function runOnAllDevices(
   }
 
   try {
+    const androidConfig = config.project.android;
     const tasks = args.tasks || ['install' + toPascalCase(args.variant)];
-    const gradleArgs = getTaskNames(args.appFolder, tasks);
+    const gradleArgs = getTaskNames(
+      (androidConfig as any).sourceDir
+        .split('/')
+        .slice(0, -1)
+        .join('/'),
+      tasks,
+    );
 
     if (args.port != null) {
       gradleArgs.push('-PreactNativeDevServerPort=' + args.port);
